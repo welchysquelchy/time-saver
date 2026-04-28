@@ -2,7 +2,12 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #212121;
+  --primary: #17171c;
+  --muted: #616161;
+  --hairline: #d9d9dd;
+  --soft-stone: #eeece7;
+  --focus-blue: #4c6ee6;
 }
 
 @theme inline {
@@ -22,5 +27,53 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+}
+
+a,
+button,
+input,
+select,
+summary {
+  transition-property: color, background-color, border-color, opacity,
+    box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--focus-blue);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  transform: translateY(-150%);
+  background: #17171c;
+  color: #ffffff;
+  border-radius: 9999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  z-index: 1000;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
