@@ -139,8 +139,10 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
     return () => window.clearInterval(interval);
   }, []);
 
-  const processImage = async (file: File) => {
-    setSelectedFileName(file.name);
+  const processImages = async (files: File[]) => {
+    setSelectedFileName(
+      files.length === 1 ? files[0].name : `${files.length} screenshots selected`
+    );
     setScreenState("processing");
     setEvents([]);
     setAddedAtById({});
@@ -150,27 +152,52 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
     setOcrStatus("Preparing OCR worker...");
 
     try {
-      const text = await extractTextFromImage(file, (update) => {
-        setOcrStatus(update.status || "Processing...");
-        setOcrProgress(update.progress);
-      });
-      const parsed = parseEvents(text);
+      const mergedParsed: ParsedEvent[] = [];
 
-      if (parsed.length === 0) {
+      for (const [fileIndex, file] of files.entries()) {
+        const text = await extractTextFromImage(file, (update) => {
+          const status = update.status || "Processing...";
+          setOcrStatus(
+            `Screenshot ${fileIndex + 1}/${files.length} (${file.name}): ${status}`
+          );
+          setOcrProgress(update.progress);
+        });
+
+        const parsed = parseEvents(text).map((event, eventIndex) => ({
+          ...event,
+          id: `${fileIndex}-${eventIndex}-${event.id}`,
+        }));
+
+        mergedParsed.push(...parsed);
+      }
+
+      const seenEventSignatures = new Set<string>();
+      const dedupedParsed = mergedParsed.filter((event) => {
+        const signature = `${event.start}|${event.end}|${event.title
+          .toLowerCase()
+          .trim()}`;
+        if (seenEventSignatures.has(signature)) {
+          return false;
+        }
+        seenEventSignatures.add(signature);
+        return true;
+      });
+
+      if (dedupedParsed.length === 0) {
         setScreenState("error");
-        setErrorMessage("No events detected from this screenshot.");
+        setErrorMessage("No events detected from the selected screenshot(s).");
         return;
       }
 
       setExtractedTitleById(
-        Object.fromEntries(parsed.map((event) => [event.id, event.title]))
+        Object.fromEntries(dedupedParsed.map((event) => [event.id, event.title]))
       );
 
       const preferredTitle = customTitle.trim() || "Work";
       const adjustedEvents =
         titlePreference === "fixed"
-          ? parsed.map((event) => ({ ...event, title: preferredTitle }))
-          : parsed;
+          ? dedupedParsed.map((event) => ({ ...event, title: preferredTitle }))
+          : dedupedParsed;
 
       setEvents(adjustedEvents);
       setScreenState("review");
@@ -180,16 +207,21 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
     }
   };
 
-  const onChooseFile = async (file: File | null) => {
-    if (!file) {
+  const onChooseFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
       return;
     }
-    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+
+    const selectedFiles = Array.from(files);
+    const hasInvalidFile = selectedFiles.some(
+      (file) => !ACCEPTED_IMAGE_TYPES.includes(file.type)
+    );
+    if (hasInvalidFile) {
       setScreenState("error");
       setErrorMessage("Only PNG/JPG/JPEG files are supported.");
       return;
     }
-    await processImage(file);
+    await processImages(selectedFiles);
   };
 
   const updateEvent = (
@@ -326,18 +358,23 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full rounded-[1.15rem] border hover:cursor-pointer border-black/10 bg-white px-8 py-6 text-lg font-semibold text-black shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-white hover:shadow-md sm:w-auto"
               >
-                {screenState === "review" ? "Upload another screenshot" : "Upload screenshot"}
+                {screenState === "review"
+                  ? "Upload another screenshot"
+                  : "Upload screenshot(s)"}
                 <span className="ml-2">→</span>
               </Button>
             )}
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept=".png,.jpg,.jpeg"
               className="hidden"
-              onChange={(event) =>
-                onChooseFile(event.currentTarget.files?.[0] ?? null)
-              }
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                await onChooseFiles(input.files);
+                input.value = "";
+              }}
             />
 
             {selectedFileName && screenState !== "processing" && (
