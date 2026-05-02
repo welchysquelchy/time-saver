@@ -13,6 +13,10 @@ const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg"];
 
 type ScreenState = "idle" | "processing" | "review" | "error";
 type CalendarPreference = "auto" | CalendarPlatform;
+type TitlePreference = "ocr" | "fixed";
+
+const TITLE_PREFERENCE_KEY = "time-saver:title-preference";
+const CUSTOM_TITLE_KEY = "time-saver:custom-title";
 
 function FloatingPaths({ position }: { position: number }) {
   const paths = Array.from({ length: 36 }, (_, i) => ({
@@ -67,6 +71,8 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
   const [events, setEvents] = useState<ParsedEvent[]>([]);
   const [calendarPreference, setCalendarPreference] =
     useState<CalendarPreference>("auto");
+  const [titlePreference, setTitlePreference] = useState<TitlePreference>("ocr");
+  const [customTitle, setCustomTitle] = useState("Work");
   const [detectedPlatform, setDetectedPlatform] =
     useState<CalendarPlatform>("google");
 
@@ -84,6 +90,38 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    try {
+      const storedTitlePreference = window.localStorage.getItem(TITLE_PREFERENCE_KEY);
+      if (storedTitlePreference === "ocr" || storedTitlePreference === "fixed") {
+        setTitlePreference(storedTitlePreference);
+      }
+
+      const storedCustomTitle = window.localStorage.getItem(CUSTOM_TITLE_KEY);
+      if (storedCustomTitle && storedCustomTitle.trim()) {
+        setCustomTitle(storedCustomTitle);
+      }
+    } catch {
+      // Ignore storage read failures and keep defaults.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TITLE_PREFERENCE_KEY, titlePreference);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [titlePreference]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CUSTOM_TITLE_KEY, customTitle);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [customTitle]);
 
   useEffect(() => {
     let index = 0;
@@ -118,7 +156,13 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
         return;
       }
 
-      setEvents(parsed);
+      const preferredTitle = customTitle.trim() || "Work";
+      const adjustedEvents =
+        titlePreference === "fixed"
+          ? parsed.map((event) => ({ ...event, title: preferredTitle }))
+          : parsed;
+
+      setEvents(adjustedEvents);
       setScreenState("review");
     } catch {
       setScreenState("error");
@@ -158,6 +202,27 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
           : event
       )
     );
+  };
+
+  const applyCustomTitleToEvents = (nextCustomTitle: string) => {
+    const preferredTitle = nextCustomTitle.trim() || "Work";
+    setEvents((current) =>
+      current.map((event) => ({ ...event, title: preferredTitle }))
+    );
+  };
+
+  const handleTitlePreferenceChange = (nextPreference: TitlePreference) => {
+    setTitlePreference(nextPreference);
+    if (nextPreference === "fixed") {
+      applyCustomTitleToEvents(customTitle);
+    }
+  };
+
+  const handleCustomTitleChange = (nextCustomTitle: string) => {
+    setCustomTitle(nextCustomTitle);
+    if (titlePreference === "fixed") {
+      applyCustomTitleToEvents(nextCustomTitle);
+    }
   };
 
   const eventCountLabel = useMemo(
@@ -285,6 +350,34 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
                   <option value="google">Google Calendar</option>
                   <option value="outlook">Outlook Calendar</option>
                 </select>
+              </div>
+
+              <div className="mb-4 grid gap-3 sm:max-w-2xl sm:grid-cols-2">
+                <label className="text-sm text-neutral-700">
+                  Title source
+                  <select
+                    className="mt-1 w-full rounded-md border border-black/10 bg-white px-3 py-2 text-sm text-black"
+                    value={titlePreference}
+                    onChange={(event) =>
+                      handleTitlePreferenceChange(event.target.value as TitlePreference)
+                    }
+                  >
+                    <option value="ocr">Use extracted title</option>
+                    <option value="fixed">Always use custom title</option>
+                  </select>
+                </label>
+
+                {titlePreference === "fixed" && (
+                  <label className="text-sm text-neutral-700">
+                    Custom title
+                    <input
+                      className="mt-1 w-full rounded-md border border-black/10 px-3 py-2 text-sm text-neutral-900"
+                      value={customTitle}
+                      onChange={(event) => handleCustomTitleChange(event.target.value)}
+                      placeholder="Work"
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="space-y-3">
