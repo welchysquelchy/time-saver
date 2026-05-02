@@ -69,6 +69,10 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
   const [ocrStatus, setOcrStatus] = useState("Preparing...");
   const [ocrProgress, setOcrProgress] = useState(0);
   const [events, setEvents] = useState<ParsedEvent[]>([]);
+  const [addedAtById, setAddedAtById] = useState<Record<string, number>>({});
+  const [extractedTitleById, setExtractedTitleById] = useState<
+    Record<string, string>
+  >({});
   const [calendarPreference, setCalendarPreference] =
     useState<CalendarPreference>("auto");
   const [titlePreference, setTitlePreference] = useState<TitlePreference>("ocr");
@@ -139,6 +143,8 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
     setSelectedFileName(file.name);
     setScreenState("processing");
     setEvents([]);
+    setAddedAtById({});
+    setExtractedTitleById({});
     setErrorMessage("");
     setOcrProgress(0);
     setOcrStatus("Preparing OCR worker...");
@@ -155,6 +161,10 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
         setErrorMessage("No events detected from this screenshot.");
         return;
       }
+
+      setExtractedTitleById(
+        Object.fromEntries(parsed.map((event) => [event.id, event.title]))
+      );
 
       const preferredTitle = customTitle.trim() || "Work";
       const adjustedEvents =
@@ -211,11 +221,22 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
     );
   };
 
+  const applyExtractedTitlesToEvents = () => {
+    setEvents((current) =>
+      current.map((event) => ({
+        ...event,
+        title: extractedTitleById[event.id] ?? event.title,
+      }))
+    );
+  };
+
   const handleTitlePreferenceChange = (nextPreference: TitlePreference) => {
     setTitlePreference(nextPreference);
     if (nextPreference === "fixed") {
       applyCustomTitleToEvents(customTitle);
+      return;
     }
+    applyExtractedTitlesToEvents();
   };
 
   const handleCustomTitleChange = (nextCustomTitle: string) => {
@@ -224,6 +245,32 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
       applyCustomTitleToEvents(nextCustomTitle);
     }
   };
+
+  const markEventAdded = (eventId: string) => {
+    setAddedAtById((current) => ({
+      ...current,
+      [eventId]: Date.now(),
+    }));
+  };
+
+  const orderedEvents = useMemo(() => {
+    return [...events].sort((a, b) => {
+      const aAddedAt = addedAtById[a.id] ?? null;
+      const bAddedAt = addedAtById[b.id] ?? null;
+
+      if (aAddedAt === null && bAddedAt !== null) {
+        return -1;
+      }
+      if (aAddedAt !== null && bAddedAt === null) {
+        return 1;
+      }
+      if (aAddedAt === null && bAddedAt === null) {
+        return 0;
+      }
+
+      return (aAddedAt as number) - (bAddedAt as number);
+    });
+  }, [events, addedAtById]);
 
   const eventCountLabel = useMemo(
     () => `${events.length} event${events.length === 1 ? "" : "s"} ready`,
@@ -381,11 +428,23 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
               </div>
 
               <div className="space-y-3">
-                {events.map((event) => (
+                {orderedEvents.map((event) => {
+                  const isAdded = addedAtById[event.id] !== undefined;
+
+                  return (
                   <div
                     key={event.id}
-                    className="grid gap-3 rounded-xl border border-black/10 p-3 sm:grid-cols-2"
+                    className={`relative grid gap-3 rounded-xl border p-3 sm:grid-cols-2 ${
+                      isAdded
+                        ? "border-emerald-300 bg-emerald-50/70"
+                        : "border-black/10 bg-white"
+                    }`}
                   >
+                    {isAdded && (
+                      <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                        Added
+                      </span>
+                    )}
                     <label className="text-sm text-neutral-700">
                       Title
                       <input
@@ -427,6 +486,7 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
                         href={buildPreferredCalendarLink(event, calendarPlatform, appOrigin)}
                         target={calendarPlatform === "apple" ? "_self" : "_blank"}
                         rel="noreferrer"
+                        onClick={() => markEventAdded(event.id)}
                         className="inline-flex items-center justify-center rounded-xl border border-black/15 bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
                       >
                         Add this event to {getCalendarLabel(calendarPlatform)}
@@ -434,17 +494,28 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
                       <button
                         type="button"
                         className="inline-flex items-center justify-center rounded-xl border border-black/15 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                        onClick={() =>
+                        onClick={() => {
                           setEvents((current) =>
                             current.filter((item) => item.id !== event.id)
-                          )
-                        }
+                          );
+                          setAddedAtById((current) => {
+                            const next = { ...current };
+                            delete next[event.id];
+                            return next;
+                          });
+                          setExtractedTitleById((current) => {
+                            const next = { ...current };
+                            delete next[event.id];
+                            return next;
+                          });
+                        }}
                       >
                         Remove
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.section>
           )}
