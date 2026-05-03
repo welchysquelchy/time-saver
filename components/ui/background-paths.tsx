@@ -75,8 +75,22 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
   >({});
   const [calendarPreference, setCalendarPreference] =
     useState<CalendarPreference>("auto");
-  const [titlePreference, setTitlePreference] = useState<TitlePreference>("ocr");
-  const [customTitle, setCustomTitle] = useState("Work");
+  const [titlePreference, setTitlePreference] = useState<TitlePreference>(() => {
+    if (typeof window === "undefined") {
+      return "ocr";
+    }
+    const storedTitlePreference = window.localStorage.getItem(TITLE_PREFERENCE_KEY);
+    return storedTitlePreference === "fixed" ? "fixed" : "ocr";
+  });
+  const [customTitle, setCustomTitle] = useState(() => {
+    if (typeof window === "undefined") {
+      return "Work";
+    }
+    const storedCustomTitle = window.localStorage.getItem(CUSTOM_TITLE_KEY);
+    return storedCustomTitle && storedCustomTitle.trim()
+      ? storedCustomTitle
+      : "Work";
+  });
   const [detectedPlatform, setDetectedPlatform] =
     useState<CalendarPlatform>("google");
 
@@ -93,22 +107,6 @@ export function BackgroundPaths({ title = "TimeSaver" }: { title?: string }) {
       setDetectedPlatform(detectCalendarPlatform(navigator.userAgent));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    try {
-      const storedTitlePreference = window.localStorage.getItem(TITLE_PREFERENCE_KEY);
-      if (storedTitlePreference === "ocr" || storedTitlePreference === "fixed") {
-        setTitlePreference(storedTitlePreference);
-      }
-
-      const storedCustomTitle = window.localStorage.getItem(CUSTOM_TITLE_KEY);
-      if (storedCustomTitle && storedCustomTitle.trim()) {
-        setCustomTitle(storedCustomTitle);
-      }
-    } catch {
-      // Ignore storage read failures and keep defaults.
-    }
   }, []);
 
   useEffect(() => {
